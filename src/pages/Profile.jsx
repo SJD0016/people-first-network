@@ -199,26 +199,13 @@ export default function Profile() {
         },
       })
 
-      const list = (title, items) => Array.isArray(items) && items.length ? `${title}:\n${items.map(item => `• ${item}`).join('\n')}` : ''
-      const sourceLines = Array.isArray(result.sources) ? result.sources.map(source => typeof source === 'string' ? source : `${source.title || source.url}${source.url ? ` — ${source.url}` : ''}`) : []
-      const intelligenceText = [
-        result.relationship_summary,
-        list('Verified public facts', result.public_facts),
-        list('Shared history', result.shared_history),
-        list('Conversation themes', result.conversation_themes),
-        list('Questions for next time', result.next_questions),
-        list('Ways I could help', result.ways_to_help),
-        result.recommended_follow_up ? `Recommended follow-up:\n${result.recommended_follow_up}` : '',
-        list('Sources', sourceLines),
-      ].filter(Boolean).join('\n\n')
+      if (!result.schema_version) throw new Error('PFN AI returned an outdated response. Replace and redeploy the AI Worker from the Phase 1.1 patch.')
 
-      const baseNotes = (person.notes || '').split('\n\nAI Contact Intelligence:')[0].trim()
       const updatePayload = {
         profile_summary: result.relationship_summary || person.profile_summary,
-        notes: `${baseNotes}\n\nAI Contact Intelligence:\n${intelligenceText}`.trim(),
         card_draft: result.handwritten_note || person.card_draft,
         ai_intelligence: result,
-        ai_researched_at: new Date().toISOString(),
+        ai_researched_at: result.generated_at || new Date().toISOString(),
       }
       const uid = await ownerId()
       const { error: updateError } = await supabase.from('people').update(updatePayload).eq('id', id).eq('owner_id', uid)
@@ -262,7 +249,7 @@ export default function Profile() {
               onClick={research}
               disabled={researching}
             >
-              {researching ? 'Researching public sources…' : 'Run Phase 1 Intelligence'}
+              {researching ? 'Verifying identity and sources…' : person.ai_intelligence ? 'Refresh AI Intelligence' : 'Run AI Intelligence'}
             </button>
 
             <button
@@ -289,15 +276,37 @@ export default function Profile() {
 
       {person.ai_intelligence && (
         <section className="panel intelligence-panel top-gap">
-          <div className="eyebrow">Phase 1 · Contact intelligence</div>
-          <h2>What PFN found</h2>
+          <div className="eyebrow">Phase 1.1 · Evidence-first intelligence</div>
+          <div className="section-heading">
+            <h2>PFN relationship brief</h2>
+            <span className={`confidence-badge confidence-${person.ai_intelligence.identity?.confidence || 'low'}`}>
+              Identity: {person.ai_intelligence.identity?.confidence || 'low'}
+            </span>
+          </div>
+
+          <p>{person.ai_intelligence.relationship_summary || 'No summary returned.'}</p>
+
           <div className="intel-grid">
             <div><strong>Relationship stage</strong><p>{person.ai_intelligence.relationship_stage || 'Not determined'}</p></div>
-            <div><strong>Confidence</strong><p>{person.ai_intelligence.confidence || 'Not reported'}</p></div>
+            <div><strong>Identity match</strong><p>{person.ai_intelligence.identity?.explanation || 'No identity explanation returned.'}</p></div>
           </div>
-          {Array.isArray(person.ai_intelligence.public_facts) && person.ai_intelligence.public_facts.length > 0 && <><h3>Verified public facts</h3><ul>{person.ai_intelligence.public_facts.map((fact,index)=><li key={index}>{fact}</li>)}</ul></>}
+
+          {Array.isArray(person.ai_intelligence.warnings) && person.ai_intelligence.warnings.length > 0 && (
+            <div className="ai-warning"><strong>Review before using</strong><ul>{person.ai_intelligence.warnings.map((warning,index)=><li key={index}>{warning}</li>)}</ul></div>
+          )}
+
+          {Array.isArray(person.ai_intelligence.private_relationship_facts) && person.ai_intelligence.private_relationship_facts.length > 0 && <><h3>From your relationship history</h3><ul>{person.ai_intelligence.private_relationship_facts.map((fact,index)=><li key={index}>{fact}</li>)}</ul></>}
+
+          {Array.isArray(person.ai_intelligence.public_facts) && person.ai_intelligence.public_facts.length > 0 && <><h3>Verified public facts</h3><div className="fact-stack">{person.ai_intelligence.public_facts.map((fact,index)=><div className="fact-card" key={index}><p>{fact.claim}</p><div className="fact-meta"><span>{fact.confidence || 'low'} confidence</span>{Array.isArray(fact.source_urls) && fact.source_urls.map((url,urlIndex)=><a key={urlIndex} href={url} target="_blank" rel="noreferrer">Source {urlIndex + 1}</a>)}</div></div>)}</div></>}
+
+          {person.ai_intelligence.next_opener && <><h3>Best opener</h3><p className="opener-box">{person.ai_intelligence.next_opener}</p></>}
           {Array.isArray(person.ai_intelligence.next_questions) && person.ai_intelligence.next_questions.length > 0 && <><h3>Questions worth asking</h3><ol>{person.ai_intelligence.next_questions.map((question,index)=><li key={index}>{question}</li>)}</ol></>}
-          {Array.isArray(person.ai_intelligence.sources) && person.ai_intelligence.sources.length > 0 && <details><summary>Sources used</summary><ul>{person.ai_intelligence.sources.map((source,index)=><li key={index}>{typeof source === 'string' ? source : <a href={source.url} target="_blank" rel="noreferrer">{source.title || source.url}</a>}</li>)}</ul></details>}
+          {Array.isArray(person.ai_intelligence.ways_to_help) && person.ai_intelligence.ways_to_help.length > 0 && <><h3>Ways you may be able to help</h3><ul>{person.ai_intelligence.ways_to_help.map((item,index)=><li key={index}>{item}</li>)}</ul></>}
+          {Array.isArray(person.ai_intelligence.risks_to_avoid) && person.ai_intelligence.risks_to_avoid.length > 0 && <><h3>Avoid assuming</h3><ul>{person.ai_intelligence.risks_to_avoid.map((item,index)=><li key={index}>{item}</li>)}</ul></>}
+          {person.ai_intelligence.recommended_follow_up && <><h3>Recommended follow-up</h3><p>{person.ai_intelligence.recommended_follow_up}</p></>}
+
+          {Array.isArray(person.ai_intelligence.sources) && person.ai_intelligence.sources.length > 0 && <details><summary>All sources reviewed</summary><ul>{person.ai_intelligence.sources.map((source,index)=><li key={index}>{source.url ? <a href={source.url} target="_blank" rel="noreferrer">{source.title || source.url}</a> : source.title}</li>)}</ul></details>}
+          <p className="muted ai-timestamp">Generated {person.ai_researched_at ? new Date(person.ai_researched_at).toLocaleString() : 'recently'} · Public facts require linked evidence.</p>
         </section>
       )}
 
