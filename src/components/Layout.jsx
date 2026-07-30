@@ -15,7 +15,7 @@ export default function Layout({ session }) {
       <nav>{links.map(([to,label,Icon]) => <NavLink key={to} to={to} end={to === '/'}><Icon size={18}/>{label}</NavLink>)}</nav>
       <div className="sidebar-footer">
         <button className="link-button" onClick={signOut}><LogOut size={16}/>Sign out</button>
-        <small>{name}<br/>People First, Plants Always.</small>
+        <small>{name}<br/>People First Network.</small>
       </div>
     </aside>
     <main className="main"><Outlet/></main>
