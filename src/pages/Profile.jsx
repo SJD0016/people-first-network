@@ -2,42 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import PageHeader from '../components/PageHeader'
 import VoiceCapture from '../components/VoiceCapture'
-import { supabase, formatDate, initials, aiEndpoint } from '../lib'
-
-const demoPerson = {
-  id: 'demo',
-  name: 'Neal Glatt',
-  company: 'GrowTheBench',
-  title: 'Founder',
-  email: '',
-  phone: '',
-  notes:
-    'Met at Cultivate. Strong connection around people development and practical leadership.',
-  profile_summary:
-    'Industry educator and leadership specialist. Sam values Neal’s practical, people-centered approach.',
-  card_draft: `Neal,
-
-Thank you for the time, generosity, and practical insight you shared at Cultivate. Your session gave me ideas I can put to work immediately, and I especially appreciated the personal encouragement and connections. I’m grateful we had the chance to meet and look forward to staying connected.
-
-— Sam`,
-  last_contact: '2026-07-13',
-  next_follow_up: '2026-08-13',
-}
-
-const demoInteractions = [
-  {
-    id: 'demo-1',
-    interaction_type: 'Met',
-    interaction_date: '2026-07-13',
-    details: 'Connected at Cultivate and attended his session.',
-  },
-  {
-    id: 'demo-2',
-    interaction_type: 'Follow-up',
-    interaction_date: '2026-07-14',
-    details: 'Prepared a handwritten thank-you note.',
-  },
-]
+import { supabase, formatDate, initials, callAI, ownerId } from '../lib'
 
 export default function Profile() {
   const { id } = useParams()
@@ -58,22 +23,14 @@ export default function Profile() {
   const load = async () => {
     setError('')
 
-    if (!supabase) {
-      if (id === 'demo') {
-        setPerson(demoPerson)
-        setInteractions(demoInteractions)
-      } else {
-        setError('This profile is unavailable in demo mode.')
-      }
-      return
-    }
-
+    const uid = await ownerId()
     const [personResult, interactionsResult] = await Promise.all([
-      supabase.from('people').select('*').eq('id', id).single(),
+      supabase.from('people').select('*').eq('id', id).eq('owner_id', uid).single(),
       supabase
         .from('interactions')
         .select('*')
         .eq('person_id', id)
+        .eq('owner_id', uid)
         .order('interaction_date', { ascending: false }),
     ])
 
@@ -91,15 +48,13 @@ export default function Profile() {
   }, [id])
 
   const saveFollowUp = async value => {
-    if (!supabase) {
-      alert('Connect Supabase to save changes.')
-      return
-    }
+    const uid = await ownerId()
 
     const { error: updateError } = await supabase
       .from('people')
       .update({ next_follow_up: value || null })
       .eq('id', id)
+      .eq('owner_id', uid)
 
     if (updateError) {
       alert(updateError.message)
@@ -114,11 +69,6 @@ export default function Profile() {
 
   const addInteraction = async event => {
     event.preventDefault()
-
-    if (!supabase) {
-      alert('Connect Supabase to save interactions.')
-      return
-    }
 
     const form = new FormData(event.currentTarget)
     const {
@@ -167,10 +117,6 @@ export default function Profile() {
   }
 
   const saveInteractionEdit = async interactionId => {
-    if (!supabase) {
-      alert('Connect Supabase to edit interactions.')
-      return
-    }
 
     const { error: updateError } = await supabase
       .from('interactions')
@@ -191,10 +137,6 @@ export default function Profile() {
   }
 
   const deleteInteraction = async interactionId => {
-    if (!supabase) {
-      alert('Connect Supabase to delete interactions.')
-      return
-    }
 
     if (!window.confirm('Delete this interaction?')) return
 
@@ -212,10 +154,6 @@ export default function Profile() {
   }
 
   const deletePerson = async () => {
-    if (!supabase) {
-      alert('Connect Supabase to delete this person.')
-      return
-    }
 
     const confirmed = window.confirm(
       `Delete ${person.name} and all of this person’s interactions? This cannot be undone.`
@@ -247,119 +185,44 @@ export default function Profile() {
   }
 
   const research = async () => {
-    if (!supabase) {
-      alert('Connect Supabase before using AI research.')
-      return
-    }
-
-    if (!aiEndpoint) {
-      alert('AI research endpoint has not been connected yet.')
-      return
-    }
-
     setResearching(true)
-
     try {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession()
-
-      const response = await fetch(aiEndpoint, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${session?.access_token}`,
+      const result = await callAI('relationship_intelligence', {
+        person,
+        interactions,
+        writer_profile: {
+          name: 'Samuel Di Rito', preferred_name: 'Sam',
+          business: "Collier's Greenhouse & Garden Center",
+          role: 'Third-generation greenhouse and garden center operator',
+          values: ['People First, Plants Always', 'gratitude', 'specificity', 'long-term relationships'],
+          voice: 'warm, direct, sincere, grounded, never corporate or overly polished',
         },
-        body: JSON.stringify({
-          action: 'relationship_intelligence',
-          person,
-          interactions,
-          writer_profile: {
-            name: 'Samuel Di Rito',
-            preferred_name: 'Sam',
-            business: "Collier's Greenhouse & Garden Center",
-            role: 'Third-generation greenhouse and garden center operator',
-            values: ['People First, Plants Always', 'gratitude', 'specificity', 'long-term relationships'],
-            voice: 'warm, direct, sincere, grounded, never corporate or overly polished',
-          },
-        }),
       })
 
-      const result = await response.json()
+      const list = (title, items) => Array.isArray(items) && items.length ? `${title}:\n${items.map(item => `• ${item}`).join('\n')}` : ''
+      const sourceLines = Array.isArray(result.sources) ? result.sources.map(source => typeof source === 'string' ? source : `${source.title || source.url}${source.url ? ` — ${source.url}` : ''}`) : []
+      const intelligenceText = [
+        result.relationship_summary,
+        list('Verified public facts', result.public_facts),
+        list('Shared history', result.shared_history),
+        list('Conversation themes', result.conversation_themes),
+        list('Questions for next time', result.next_questions),
+        list('Ways I could help', result.ways_to_help),
+        result.recommended_follow_up ? `Recommended follow-up:\n${result.recommended_follow_up}` : '',
+        list('Sources', sourceLines),
+      ].filter(Boolean).join('\n\n')
 
-      if (!response.ok) {
-        throw new Error(result.error || 'Research failed.')
-      }
-
-      const summary =
-        result.relationship_summary ||
-        result.summary ||
-        result.profile_summary ||
-        person.profile_summary ||
-        ''
-
-      const listSection = (title, items) =>
-        Array.isArray(items) && items.length
-          ? `${title}:\n${items.map(item => `• ${item}`).join('\n')}`
-          : ''
-
-      const researchNotes = [
-        result.relationship_stage
-          ? `Relationship stage:\n${result.relationship_stage}`
-          : '',
-        listSection('Shared history', result.shared_history),
-        listSection('What matters to them', result.what_matters),
-        listSection('Acts of generosity', result.acts_of_generosity),
-        listSection('Conversation themes', result.conversation_themes),
-        listSection('People and organizations', result.people_and_organizations),
-        listSection('Future opportunities', result.future_opportunities),
-        result.next_opener
-          ? `Suggested next opener:\n${result.next_opener}`
-          : result.opener
-            ? `Suggested next opener:\n${result.opener}`
-            : '',
-        listSection(
-          'Questions for the next conversation',
-          result.next_questions || result.questions
-        ),
-        listSection('Ways to help', result.ways_to_help),
-        listSection('Risks to avoid', result.risks_to_avoid),
-        result.recommended_follow_up
-          ? `Recommended follow-up:\n${result.recommended_follow_up}`
-          : '',
-      ]
-        .filter(Boolean)
-        .join('\n\n')
-
-      const baseNotes = (person.notes || '')
-        .split('\n\nAI Relationship Intelligence:')[0]
-        .split('\n\nAI Research:')[0]
-        .trim()
-
+      const baseNotes = (person.notes || '').split('\n\nAI Contact Intelligence:')[0].trim()
       const updatePayload = {
-        profile_summary: summary,
-        notes: `${baseNotes}\n\nAI Relationship Intelligence:\n${researchNotes}`.trim(),
+        profile_summary: result.relationship_summary || person.profile_summary,
+        notes: `${baseNotes}\n\nAI Contact Intelligence:\n${intelligenceText}`.trim(),
+        card_draft: result.handwritten_note || person.card_draft,
+        ai_intelligence: result,
+        ai_researched_at: new Date().toISOString(),
       }
-
-      const generatedCard =
-        result.handwritten_note ||
-        result.card_draft ||
-        result.note_draft ||
-        ''
-
-      if (generatedCard) {
-        updatePayload.card_draft = generatedCard
-      }
-
-      const { error: updateError } = await supabase
-        .from('people')
-        .update(updatePayload)
-        .eq('id', id)
-
-      if (updateError) {
-        throw updateError
-      }
-
+      const uid = await ownerId()
+      const { error: updateError } = await supabase.from('people').update(updatePayload).eq('id', id).eq('owner_id', uid)
+      if (updateError) throw updateError
       await load()
     } catch (researchError) {
       alert(researchError.message || 'Research failed.')
@@ -399,7 +262,7 @@ export default function Profile() {
               onClick={research}
               disabled={researching}
             >
-              {researching ? 'Researching…' : 'Research Person'}
+              {researching ? 'Researching public sources…' : 'Run Phase 1 Intelligence'}
             </button>
 
             <button
@@ -413,12 +276,6 @@ export default function Profile() {
         }
       />
 
-      {!supabase && (
-        <div className="notice warning top-gap">
-          Demo profile: connect Supabase to save edits, interactions, and AI
-          research.
-        </div>
-      )}
 
       <section className="panel profile-hero top-gap">
         <div className="avatar large">{initials(person.name)}</div>
@@ -429,6 +286,20 @@ export default function Profile() {
           </p>
         </div>
       </section>
+
+      {person.ai_intelligence && (
+        <section className="panel intelligence-panel top-gap">
+          <div className="eyebrow">Phase 1 · Contact intelligence</div>
+          <h2>What PFN found</h2>
+          <div className="intel-grid">
+            <div><strong>Relationship stage</strong><p>{person.ai_intelligence.relationship_stage || 'Not determined'}</p></div>
+            <div><strong>Confidence</strong><p>{person.ai_intelligence.confidence || 'Not reported'}</p></div>
+          </div>
+          {Array.isArray(person.ai_intelligence.public_facts) && person.ai_intelligence.public_facts.length > 0 && <><h3>Verified public facts</h3><ul>{person.ai_intelligence.public_facts.map((fact,index)=><li key={index}>{fact}</li>)}</ul></>}
+          {Array.isArray(person.ai_intelligence.next_questions) && person.ai_intelligence.next_questions.length > 0 && <><h3>Questions worth asking</h3><ol>{person.ai_intelligence.next_questions.map((question,index)=><li key={index}>{question}</li>)}</ol></>}
+          {Array.isArray(person.ai_intelligence.sources) && person.ai_intelligence.sources.length > 0 && <details><summary>Sources used</summary><ul>{person.ai_intelligence.sources.map((source,index)=><li key={index}>{typeof source === 'string' ? source : <a href={source.url} target="_blank" rel="noreferrer">{source.title || source.url}</a>}</li>)}</ul></details>}
+        </section>
+      )}
 
       <div className="two-col">
         <div className="stack">

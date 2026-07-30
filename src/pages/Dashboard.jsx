@@ -2,11 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import PageHeader from '../components/PageHeader'
 import PersonRow from '../components/PersonRow'
-import { supabase, formatDate } from '../lib'
-
-const demoPeople = [
-  { id:'demo', name:'Neal Glatt', company:'GrowTheBench', title:'Founder', next_follow_up:'2026-08-13', last_contact:'2026-07-13' }
-]
+import { supabase, formatDate, ownerId } from '../lib'
 
 export default function Dashboard() {
   const [people, setPeople] = useState([])
@@ -14,12 +10,11 @@ export default function Dashboard() {
   const [interactions, setInteractions] = useState([])
 
   useEffect(() => {
-    if (!supabase) return setPeople(demoPeople)
-    Promise.all([
-      supabase.from('people').select('*').order('last_contact', { ascending:false }),
-      supabase.from('events').select('*').order('event_date', { ascending:true }),
-      supabase.from('interactions').select('*, people(name)').order('interaction_date', { ascending:false }).limit(8)
-    ]).then(([p,e,i]) => {
+    ownerId().then(uid => Promise.all([
+      supabase.from('people').select('*').eq('owner_id', uid).order('last_contact', { ascending:false }),
+      supabase.from('events').select('*').eq('owner_id', uid).order('event_date', { ascending:true }),
+      supabase.from('interactions').select('*, people(name)').eq('owner_id', uid).order('interaction_date', { ascending:false }).limit(8)
+    ])).then(([p,e,i]) => {
       setPeople(p.data || [])
       setEvents(e.data || [])
       setInteractions(i.data || [])

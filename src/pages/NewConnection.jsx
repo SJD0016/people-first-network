@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import PageHeader from '../components/PageHeader'
 import VoiceCapture from '../components/VoiceCapture'
-import { supabase, cardDraft, addDays } from '../lib'
+import { supabase, cardDraft, addDays, currentUser } from '../lib'
 
 export default function NewConnection() {
   const navigate = useNavigate()
@@ -27,9 +27,9 @@ export default function NewConnection() {
     }
 
     setSaving(true)
-    if (!supabase) { alert('Demo mode: connect Supabase to save.'); return setSaving(false) }
+    const user = await currentUser()
 
-    let duplicateQuery = supabase.from('people').select('id,name,email').limit(1)
+    let duplicateQuery = supabase.from('people').select('id,name,email').eq('owner_id', user.id).limit(1)
     duplicateQuery = email ? duplicateQuery.eq('email', email) : duplicateQuery.ilike('name', name)
     const { data: duplicate } = await duplicateQuery
     if (duplicate?.length && !confirm(`${duplicate[0].name} may already exist. Add another profile anyway?`)) {
@@ -37,7 +37,6 @@ export default function NewConnection() {
       return
     }
 
-    const { data:{ user } } = await supabase.auth.getUser()
     const { data, error } = await supabase.from('people').insert({ ...payload, owner_id:user.id }).select().single()
     if (error) { alert(error.message); setSaving(false); return }
 

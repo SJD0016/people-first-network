@@ -1,32 +1,79 @@
 import { useState } from 'react'
 import { Navigate } from 'react-router-dom'
-import { supabase, configured } from '../lib'
+import { supabase } from '../lib'
+
+const modes = {
+  signin: { eyebrow: 'Welcome back', title: 'Sign in', button: 'Sign in' },
+  signup: { eyebrow: 'Create your private network', title: 'Create account', button: 'Create account' },
+  reset: { eyebrow: 'Account recovery', title: 'Reset password', button: 'Send reset email' },
+}
 
 export default function Login({ session }) {
+  const [mode, setMode] = useState('signin')
+  const [name, setName] = useState('')
   const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
   const [message, setMessage] = useState('')
-  if (session) return <Navigate to="/" replace />
+  const [error, setError] = useState('')
+  const [busy, setBusy] = useState(false)
 
-  const submit = async (e) => {
-    e.preventDefault()
-    if (!configured) return setMessage('Add Supabase environment variables before signing in.')
-    const { error } = await supabase.auth.signInWithOtp({
-      email,
-      options: { emailRedirectTo: window.location.origin }
-    })
-    setMessage(error ? error.message : 'Check your email for a secure sign-in link.')
+  if (session) return <Navigate to="/" replace />
+  const copy = modes[mode]
+
+  const submit = async (event) => {
+    event.preventDefault()
+    setBusy(true); setError(''); setMessage('')
+    try {
+      if (mode === 'signin') {
+        const { error: authError } = await supabase.auth.signInWithPassword({ email, password })
+        if (authError) throw authError
+      } else if (mode === 'signup') {
+        if (password.length < 8) throw new Error('Use at least 8 characters for your password.')
+        const { data, error: authError } = await supabase.auth.signUp({
+          email, password,
+          options: {
+            emailRedirectTo: window.location.origin,
+            data: { full_name: name.trim() || email.split('@')[0] },
+          },
+        })
+        if (authError) throw authError
+        setMessage(data.session ? 'Account created. You are signed in.' : 'Check your email to confirm your account, then sign in.')
+      } else {
+        const { error: authError } = await supabase.auth.resetPasswordForEmail(email, {
+          redirectTo: `${window.location.origin}/update-password`,
+        })
+        if (authError) throw authError
+        setMessage('Check your email for the password reset link.')
+      }
+    } catch (err) {
+      setError(err.message || 'Authentication failed.')
+    } finally {
+      setBusy(false)
+    }
   }
 
-  return <div className="auth-page">
-    <form className="auth-card" onSubmit={submit}>
-      <div className="brand-mark large">PF</div>
-      <div className="eyebrow">Private relationship assistant</div>
-      <h1>People First Network</h1>
-      <p>Sign in with your email. No password is required.</p>
-      <label>Email<input type="email" required value={email} onChange={e=>setEmail(e.target.value)} placeholder="you@example.com"/></label>
-      <button className="primary-button">Email me a sign-in link</button>
-      {message && <div className="notice">{message}</div>}
-      {!configured && <div className="notice warning">The app is not connected to Supabase yet.</div>}
-    </form>
-  </div>
+  return (
+    <div className="auth-page">
+      <form className="auth-card" onSubmit={submit}>
+        <div className="brand-mark large">PF</div>
+        <div className="eyebrow">{copy.eyebrow}</div>
+        <h1>{copy.title}</h1>
+        <p>Your contacts and relationship history stay private to your account.</p>
+
+        {mode === 'signup' && <label>Your name<input value={name} onChange={e => setName(e.target.value)} autoComplete="name" required /></label>}
+        <label>Email<input type="email" value={email} onChange={e => setEmail(e.target.value)} autoComplete="email" required /></label>
+        {mode !== 'reset' && <label>Password<input type="password" value={password} onChange={e => setPassword(e.target.value)} autoComplete={mode === 'signup' ? 'new-password' : 'current-password'} minLength={8} required /></label>}
+
+        <button className="primary-button" disabled={busy}>{busy ? 'Please wait…' : copy.button}</button>
+        {message && <div className="notice success">{message}</div>}
+        {error && <div className="notice error">{error}</div>}
+
+        <div className="auth-links">
+          {mode !== 'signin' && <button type="button" onClick={() => { setMode('signin'); setError(''); setMessage('') }}>Sign in</button>}
+          {mode !== 'signup' && <button type="button" onClick={() => { setMode('signup'); setError(''); setMessage('') }}>Create account</button>}
+          {mode !== 'reset' && <button type="button" onClick={() => { setMode('reset'); setError(''); setMessage('') }}>Forgot password?</button>}
+        </div>
+      </form>
+    </div>
+  )
 }

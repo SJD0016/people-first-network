@@ -8,6 +8,17 @@ export const supabase = url && anon ? createClient(url, anon) : null
 export const configured = Boolean(supabase)
 export const aiEndpoint = import.meta.env.VITE_AI_ENDPOINT || ''
 
+export async function currentUser() {
+  if (!supabase) throw new Error('Supabase is not configured.')
+  const { data, error } = await supabase.auth.getUser()
+  if (error || !data.user) throw error || new Error('Please sign in again.')
+  return data.user
+}
+
+export async function ownerId() {
+  return (await currentUser()).id
+}
+
 export const formatDate = (value) => {
   if (!value) return 'Not set'
   return new Date(`${value}T12:00:00`).toLocaleDateString(undefined, {

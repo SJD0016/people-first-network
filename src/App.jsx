@@ -3,6 +3,7 @@ import { Navigate, Route, Routes } from 'react-router-dom'
 import { configured, supabase } from './lib'
 import Layout from './components/Layout'
 import Login from './pages/Login'
+import UpdatePassword from './pages/UpdatePassword'
 import Dashboard from './pages/Dashboard'
 import People from './pages/People'
 import NewConnection from './pages/NewConnection'
@@ -16,7 +17,7 @@ import BulkImport from './pages/BulkImport'
 
 export default function App() {
   const [session, setSession] = useState(null)
-  const [loading, setLoading] = useState(configured)
+  const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     if (!supabase) {
@@ -29,19 +30,25 @@ export default function App() {
       setLoading(false)
     })
 
-    const { data: listener } = supabase.auth.onAuthStateChange(
-      (_event, nextSession) => {
-        setSession(nextSession)
-      },
-    )
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      setSession(nextSession)
+    })
 
     return () => listener.subscription.unsubscribe()
   }, [])
 
-  if (loading) {
+  if (loading) return <div className="center-screen">Loading People First Network…</div>
+
+  if (!configured) {
     return (
-      <div className="center-screen">
-        Loading People First Network…
+      <div className="center-screen setup-error">
+        <div className="auth-card">
+          <div className="brand-mark large">PF</div>
+          <h1>Configuration required</h1>
+          <p>Add the Supabase environment variables to Cloudflare Pages, then redeploy.</p>
+          <code>VITE_SUPABASE_URL</code>
+          <code>VITE_SUPABASE_ANON_KEY</code>
+        </div>
       </div>
     )
   }
@@ -50,28 +57,20 @@ export default function App() {
     <Routes>
       <Route path="/connect" element={<Connect />} />
       <Route path="/login" element={<Login session={session} />} />
-
+      <Route path="/update-password" element={<UpdatePassword session={session} />} />
       <Route
         path="/*"
-        element={
-          !configured ? (
-            <Layout demoMode />
-          ) : session ? (
-            <Layout />
-          ) : (
-            <Navigate to="/login" replace />
-          )
-        }
+        element={session ? <Layout session={session} /> : <Navigate to="/login" replace />}
       >
         <Route index element={<Dashboard />} />
         <Route path="people" element={<People />} />
         <Route path="people/new" element={<NewConnection />} />
         <Route path="people/:id" element={<Profile />} />
-        <Route path="import" element={<BulkImport />} />
+        <Route path="import" element={<BulkImport userId={session?.user?.id} />} />
         <Route path="prepare" element={<Prepare />} />
         <Route path="cards" element={<Cards />} />
         <Route path="events" element={<Events />} />
-        <Route path="settings" element={<Settings />} />
+        <Route path="settings" element={<Settings session={session} />} />
       </Route>
     </Routes>
   )

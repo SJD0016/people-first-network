@@ -2,12 +2,12 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import PageHeader from '../components/PageHeader'
 import PersonRow from '../components/PersonRow'
-import { supabase } from '../lib'
+import { supabase, ownerId } from '../lib'
 
 export default function People() {
   const [people, setPeople] = useState([])
   const [search, setSearch] = useState('')
-  useEffect(()=>{ if(supabase) supabase.from('people').select('*').order('name').then(({data})=>setPeople(data||[])) },[])
+  useEffect(()=>{ ownerId().then(uid => supabase.from('people').select('*').eq('owner_id', uid).order('name')).then(({data})=>setPeople(data||[])) },[])
   const filtered = people.filter(p => [p.name,p.company,p.title,p.notes].join(' ').toLowerCase().includes(search.toLowerCase()))
   return <>
     <PageHeader title="People" subtitle="Every relationship in one place." action={<Link className="primary-button" to="/people/new">+ Add Person</Link>} />

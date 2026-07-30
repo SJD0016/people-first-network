@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react'
 import PageHeader from '../components/PageHeader'
-import { supabase, formatDate } from '../lib'
+import { supabase, formatDate, ownerId } from '../lib'
 
 export default function Events(){
   const [events,setEvents]=useState([])
-  useEffect(()=>{ if(supabase) supabase.from('events').select('*').order('event_date',{ascending:false}).then(({data})=>setEvents(data||[])) },[])
+  useEffect(()=>{ ownerId().then(uid => supabase.from('events').select('*').eq('owner_id', uid).order('event_date',{ascending:false})).then(({data})=>setEvents(data||[])) },[])
   const add = async e => {
     e.preventDefault(); if(!supabase) return
     const f=new FormData(e.currentTarget); const {data:{user}}=await supabase.auth.getUser()
