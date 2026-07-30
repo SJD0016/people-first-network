@@ -17,4 +17,4 @@ npm run build
 
 Cloudflare build output directory: `dist`.
 
-See `UPLOAD-FIRST.md` before uploading the project to GitHub.
+See `UPLOAD-FIRST.md` before uploading the project to GitHub. 
